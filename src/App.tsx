@@ -1,7 +1,5 @@
-'use client'
-
-import axios from 'axios'
-import { useCallback, useEffect, useReducer } from 'react'
+import axios from 'axios';
+import { useEffect, useReducer, useState } from 'react';
 
 type StateProps<T> = {
   data?: T;
@@ -9,7 +7,7 @@ type StateProps<T> = {
   isLoading: boolean;
 }
 
-type ActionProps<T> = {type: 'LOADING'} | {type: 'FETCHING', payload: T} | {type: 'ERROR', payload: Error}
+type ActionProps<T> = {type: 'LOADING'} | {type: 'FETCHING', payload: T} | {type: 'ERROR', payload: Error} | {type: 'FETCHED'}
 
 type User = {
   id: number
@@ -18,6 +16,7 @@ type User = {
 
 // hook
 function useFetch<T = unknown>(url: string) {
+
   const initialState: StateProps<T> = {
     data: undefined,
     error: undefined,
@@ -42,24 +41,33 @@ function useFetch<T = unknown>(url: string) {
 
   const [state, dispatch] = useReducer(reducer, initialState)
 
-  const handleFetch = useCallback(async () => {
-    dispatch({type: 'LOADING'})
-    try {
-      const response = await axios.get(url)      
-      dispatch({type: 'FETCHING', payload: response.data})
-    } catch (error) {
-      if(error instanceof Error) {
-        dispatch({type: 'ERROR', payload: error})
-      }
-      if(axios.isAxiosError(error) && error.response) {
-        dispatch({type: 'ERROR', payload: error as Error})
-      }
-    } 
-  }, [url])
-
   useEffect(() => {
+  const controller = new AbortController()
+
+    const handleFetch = async () => {
+      dispatch({type: 'LOADING'})
+      try {
+        const response = await axios.get(url, {
+          signal: controller.signal
+        })      
+        dispatch({type: 'FETCHING', payload: response.data})
+      } catch (error) {
+        if(error instanceof Error) {
+          dispatch({type: 'ERROR', payload: error})
+        }
+        if(axios.isAxiosError(error) && error.response) {
+          dispatch({type: 'ERROR', payload: error as Error})
+        }
+      }
+    }
+
     handleFetch()
-  },[handleFetch]) // ao usar uma função como dependencia do useEffect, deve colocar a função dentro de um useCallback
+
+    return () => { // clean up function
+      console.log('cancelando a requisição');
+      controller.abort()
+    }
+  },[url])
 
   return {
     data: state.data,
@@ -68,16 +76,15 @@ function useFetch<T = unknown>(url: string) {
   }
 }
 
-function App() {
-
-  const {data, error, isLoading} = useFetch<User[]>('https://jsonplaceholder.typicode.com/users')    
+const Component = () => {
+  const {data, error, isLoading} = useFetch<User[]>('https://jsonplaceholder.typicode.com/users')
   
   return (
-    <div className='flex flex-col items-center justify-center h-screen bg-zinc-900 text-white gap-4'>
-      <h2>useReducer</h2>
+    <>
+      {isLoading && !error && <p className='text-yellow-500'>Loading...</p>}
       
       {error && !data && <p className='text-red-500'>{error.message}</p>}
-      {isLoading && !data && <p className='text-yellow-500'>Loading...</p>}
+      
       {data && 
         <ul>
           {data.map((user) => (
@@ -86,6 +93,20 @@ function App() {
           }
         </ul>
       }
+    </>
+  )
+}
+
+function App() {
+  const [isVisible, setIsVisible] = useState(false);
+  
+  return (
+    <div className='flex flex-col items-center justify-center h-screen bg-zinc-900 text-white gap-4'>
+      <h2>Meu hook customizado</h2>
+
+      <button onClick={() => setIsVisible(!isVisible)} className='bg-blue-500 px-4 py-2'>Clique</button>
+      
+      {isVisible && <Component />}
     </div>
   )
 }
